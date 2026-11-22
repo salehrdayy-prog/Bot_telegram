@@ -29,10 +29,15 @@ async def panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("🔒 تنظیمات قفل‌ها:", reply_markup=keyboards.locks_panel(settings))
     
     elif data.startswith("toggle_lock_"):
+        # استخراج دقیق نام ستون (مثلا lock_gif)
         setting_name = data.replace("toggle_lock_", "")
         settings = get_group_settings(chat_id)
+        
+        # تغییر وضعیت فقط برای همان یک مورد
         new_value = 0 if settings[setting_name] else 1
         update_group_setting(chat_id, setting_name, new_value)
+        
+        # دریافت مجدد تنظیمات و آپدیت کیبورد
         settings = get_group_settings(chat_id)
         await query.edit_message_text("🔒 تنظیمات قفل‌ها:", reply_markup=keyboards.locks_panel(settings))
     
