@@ -2,19 +2,24 @@ name: Run Telegram Bot
 
 on:
   push:
-    branches: [ "main" ] # یا master
-  workflow_dispatch: # اجازه اجرای دستی
+    branches: [ "main" ]
+  workflow_dispatch:
   schedule:
-    - cron: '0 */5 * * *' # هر ۵ ساعت یک بار ری‌استارت می‌شود تا قطع نشود
+    - cron: '0 */5 * * *' # ری‌استارت خودکار هر ۵ ساعت
+
+permissions:
+  contents: write # نیاز برای بکاپ دیتابیس در گیت‌هاب
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 350 # کمتر از ۶ ساعت
+    timeout-minutes: 350
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # برای جلوگیری از خطای پوش در گیت
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -29,4 +34,6 @@ jobs:
     - name: Run Bot
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        GITHUB_REPO_URL: ${{ github.repository }} # به صورت خودکار نام کاربری/مخزن را می‌خواند
       run: python main.py
