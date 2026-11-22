@@ -27,16 +27,17 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     # دکمه‌ها و پنل
-    app.add_handler(CommandHandler("panel", admin.panel_command))
-    app.add_handler(CallbackQueryHandler(admin.panel_callback, pattern=r"^panel_|^toggle_lock_"))
+    app.add_handler(CommandHandler("پنل", admin.panel_command))
+    # اصلاح الگوی کال‌بک برای جلوگیری از تداخل
+    app.add_handler(CallbackQueryHandler(admin.panel_callback, pattern=r"^(panel_|toggle_lock_)"))
 
-    # دستورات
-    app.add_handler(CommandHandler("warn", admin.warn_user))
-    app.add_handler(CommandHandler("unwarn", admin.reset_user_warns))
-    app.add_handler(CommandHandler("mute", admin.mute_user))
-    app.add_handler(CommandHandler("unmute", admin.unmute_user))
-    app.add_handler(CommandHandler("ban", admin.ban_user))
-    app.add_handler(CommandHandler("unban", admin.unban_user))
+    # دستورات (فارسی شده)
+    app.add_handler(CommandHandler("اخطار", admin.warn_user))
+    app.add_handler(CommandHandler("حذف_اخطار", admin.reset_user_warns))
+    app.add_handler(CommandHandler("سکوت", admin.mute_user))
+    app.add_handler(CommandHandler("رفع_سکوت", admin.unmute_user))
+    app.add_handler(CommandHandler("بن", admin.ban_user))
+    app.add_handler(CommandHandler("رفع_بن", admin.unban_user))
 
     # فیلترها
     filter_group = filters.ChatType.GROUPS & ~filters.StatusUpdate.ALL
