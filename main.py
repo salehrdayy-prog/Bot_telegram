@@ -40,6 +40,7 @@ def main():
     app.add_handler(CommandHandler("setwelcome", admin.change_welcome_text))
     app.add_handler(CommandHandler("mutetime", admin.mute_time))
     app.add_handler(CommandHandler("purge", admin.purge_messages))
+    app.add_handler(CommandHandler("help", admin.help_command))
 
     # فیلترها
     filter_group = filters.ChatType.GROUPS & ~filters.StatusUpdate.ALL
