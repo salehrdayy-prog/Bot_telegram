@@ -5,6 +5,7 @@ def main_panel():
         [InlineKeyboardButton("🔒 قفل‌ها", callback_data="panel_locks")],
         [InlineKeyboardButton("⚠️ سیستم اخطار", callback_data="panel_warns")],
         [InlineKeyboardButton("👋 خوش‌آمدگویی", callback_data="panel_welcome")],
+        [InlineKeyboardButton("🧹 پاکسازی گروه", callback_data="panel_purge")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -21,6 +22,19 @@ def locks_panel(settings):
          InlineKeyboardButton(f"{status('lock_video')} ویدیو", callback_data="toggle_lock_lock_video")],
         [InlineKeyboardButton(f"{status('lock_file')} فایل", callback_data="toggle_lock_lock_file"),
          InlineKeyboardButton(f"{status('lock_voice')} پیام صوتی", callback_data="toggle_lock_lock_voice")],
+        [InlineKeyboardButton(f"{status('lock_username')} یوزرنیم", callback_data="toggle_lock_lock_username"),
+         InlineKeyboardButton(f"{status('lock_hashtag')} هشتگ", callback_data="toggle_lock_lock_hashtag")],
+        [InlineKeyboardButton(f"{status('lock_bots')} ربات‌ها", callback_data="toggle_lock_lock_bots"),
+         InlineKeyboardButton(f"{status('lock_emoji')} ایموجی", callback_data="toggle_lock_lock_emoji")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="panel_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def welcome_panel(settings):
+    status = "✅ فعال" if settings['welcome_enabled'] else "❌ غیرفعال"
+    keyboard = [
+        [InlineKeyboardButton(f"وضعیت: {status}", callback_data="toggle_welcome")],
+        [InlineKeyboardButton("📝 تغییر متن خوش‌آمدگویی", callback_data="change_welcome_text")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="panel_main")],
     ]
     return InlineKeyboardMarkup(keyboard)
