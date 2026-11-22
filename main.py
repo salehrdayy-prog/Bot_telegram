@@ -23,23 +23,23 @@ def main():
     init_db()
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # پنل
-    app.add_handler(CommandHandler("پنل", admin.panel_command))
+    # پنل (دستور به انگلیسی است)
+    app.add_handler(CommandHandler("panel", admin.panel_command))
     app.add_handler(CallbackQueryHandler(admin.panel_callback, pattern=r"^(panel_|toggle_lock_|toggle_welcome|change_welcome_text)"))
 
-    # دستورات مرحله ۱
-    app.add_handler(CommandHandler("اخطار", admin.warn_user))
-    app.add_handler(CommandHandler("حذف_اخطار", admin.reset_user_warns))
-    app.add_handler(CommandHandler("سکوت", admin.mute_user))
-    app.add_handler(CommandHandler("رفع_سکوت", admin.unmute_user))
-    app.add_handler(CommandHandler("بن", admin.ban_user))
-    app.add_handler(CommandHandler("رفع_بن", admin.unban_user))
+    # دستورات مرحله ۱ (انگلیسی)
+    app.add_handler(CommandHandler("warn", admin.warn_user))
+    app.add_handler(CommandHandler("unwarn", admin.reset_user_warns))
+    app.add_handler(CommandHandler("mute", admin.mute_user))
+    app.add_handler(CommandHandler("unmute", admin.unmute_user))
+    app.add_handler(CommandHandler("ban", admin.ban_user))
+    app.add_handler(CommandHandler("unban", admin.unban_user))
 
-    # دستورات جدید مرحله ۲
-    app.add_handler(CommandHandler("تنظیم_اخطار", admin.set_max_warns))
-    app.add_handler(CommandHandler("تنظیم_متن_خوشامد", admin.change_welcome_text))
-    app.add_handler(CommandHandler("سکوت_زمان_دار", admin.mute_time))
-    app.add_handler(CommandHandler("پاکسازی", admin.purge_messages))
+    # دستورات جدید مرحله ۲ (انگلیسی)
+    app.add_handler(CommandHandler("setmaxwarns", admin.set_max_warns))
+    app.add_handler(CommandHandler("setwelcome", admin.change_welcome_text))
+    app.add_handler(CommandHandler("mutetime", admin.mute_time))
+    app.add_handler(CommandHandler("purge", admin.purge_messages))
 
     # فیلترها
     filter_group = filters.ChatType.GROUPS & ~filters.StatusUpdate.ALL
