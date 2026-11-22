@@ -1,4 +1,4 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
 
 def main_panel():
     keyboard = [
@@ -36,5 +36,16 @@ def welcome_panel(settings):
         [InlineKeyboardButton(f"وضعیت: {status}", callback_data="toggle_welcome")],
         [InlineKeyboardButton("📝 تغییر متن خوش‌آمدگویی", callback_data="change_welcome_text")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="panel_main")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# کیبورد جدید برای راهنما (دکمه‌های کپی)
+def help_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("📋 کپی دستور اخطار", copy_text=CopyTextButton(text="/warn"))],
+        [InlineKeyboardButton("📋 کپی دستور سکوت موقت", copy_text=CopyTextButton(text="/mutetime 1h"))],
+        [InlineKeyboardButton("📋 کپی دستور پاکسازی", copy_text=CopyTextButton(text="/purge"))],
+        [InlineKeyboardButton("📋 کپی دستور تغییر متن خوش‌آمد", copy_text=CopyTextButton(text="/setwelcome سلام {name} عزیز"))],
+        [InlineKeyboardButton("📋 کپی دستور تنظیم اخطار", copy_text=CopyTextButton(text="/setmaxwarns 3"))],
     ]
     return InlineKeyboardMarkup(keyboard)
