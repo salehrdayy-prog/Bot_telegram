@@ -14,6 +14,7 @@ def get_connection():
 def init_db():
     with get_connection() as conn:
         cursor = conn.cursor()
+        # اضافه شدن ستون‌های جدید برای مرحله ۲
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS groups (
                 chat_id INTEGER PRIMARY KEY,
@@ -30,7 +31,11 @@ def init_db():
                 lock_photo INTEGER DEFAULT 0,
                 lock_video INTEGER DEFAULT 0,
                 lock_file INTEGER DEFAULT 0,
-                lock_voice INTEGER DEFAULT 0
+                lock_voice INTEGER DEFAULT 0,
+                lock_username INTEGER DEFAULT 0,
+                lock_hashtag INTEGER DEFAULT 0,
+                lock_bots INTEGER DEFAULT 0,
+                lock_emoji INTEGER DEFAULT 0
             )
         """)
         cursor.execute("""
@@ -60,7 +65,8 @@ def update_group_setting(chat_id, setting, value):
     allowed = [
         'welcome_enabled', 'welcome_text', 'goodbye_enabled', 'goodbye_text',
         'max_warns', 'warn_action', 'lock_link', 'lock_forward', 'lock_sticker',
-        'lock_gif', 'lock_photo', 'lock_video', 'lock_file', 'lock_voice'
+        'lock_gif', 'lock_photo', 'lock_video', 'lock_file', 'lock_voice',
+        'lock_username', 'lock_hashtag', 'lock_bots', 'lock_emoji'
     ]
     if setting not in allowed:
         raise ValueError("Invalid setting")
@@ -98,13 +104,10 @@ def backup_database_to_github():
         gh_token = os.getenv("GH_TOKEN")
         repo_url = os.getenv("GITHUB_REPO_URL")
         if not gh_token or not repo_url:
-            log.warning("GH_TOKEN or GITHUB_REPO_URL missing, skip backup.")
             return
-
         subprocess.run(["git", "config", "user.name", "GitHub Action"], check=True)
         subprocess.run(["git", "config", "user.email", "action@github.com"], check=True)
         subprocess.run(["git", "add", DATABASE_FILE], check=True)
-
         result = subprocess.run(["git", "diff", "--cached", "--quiet"])
         if result.returncode != 0:
             subprocess.run(["git", "commit", "-m", "Auto backup database"], check=True)
@@ -113,7 +116,5 @@ def backup_database_to_github():
                 check=True
             )
             log.info("✅ Database backed up.")
-    except subprocess.CalledProcessError as e:
-        log.error("Backup failed: %s", e)
     except Exception as e:
         log.error("Backup error: %s", e)
