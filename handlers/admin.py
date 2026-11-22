@@ -30,50 +30,65 @@ async def panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         settings = get_group_settings(chat_id)
         await query.edit_message_text("🔒 تنظیمات قفل‌ها:", reply_markup=keyboards.locks_panel(settings))
     
-    elif data.startswith("toggle_lock_"):
-        setting_name = data.replace("toggle_lock_", "")
+    elif data.startswith("toggle_"):
+        # استخراج دقیق نام تنظیمات
+        setting_name = data.replace("toggle_", "")
         settings = get_group_settings(chat_id)
-        new_value = 0 if settings[setting_name] else 1
-        update_group_setting(chat_id, setting_name, new_value)
-        settings = get_group_settings(chat_id)
-        await query.edit_message_text("🔒 تنظیمات قفل‌ها:", reply_markup=keyboards.locks_panel(settings))
-    
-    elif data == "panel_welcome":
-        settings = get_group_settings(chat_id)
-        await query.edit_message_text("👋 تنظیمات خوش‌آمدگویی:", reply_markup=keyboards.welcome_panel(settings))
+        
+        # بررسی وجود کلید در دیکشنری تنظیمات
+        if setting_name in settings:
+            new_value = 0 if settings[setting_name] else 1
+            update_group_setting(chat_id, setting_name, new_value)
+            settings = get_group_settings(chat_id)
+        
+        # بر اساس پنل فعلی، کیبورد مناسب را نمایش بده
+        if setting_name.startswith("welcome") or setting_name.startswith("auto_delete"):
+             await query.edit_message_text("👋 تنظیمات خوش‌آمدگویی:", reply_markup=keyboards.welcome_panel(settings))
+        else:
+             await query.edit_message_text("🔒 تنظیمات قفل‌ها:", reply_markup=keyboards.locks_panel(settings))
 
-    elif data == "toggle_welcome":
-        settings = get_group_settings(chat_id)
-        new_value = 0 if settings['welcome_enabled'] else 1
-        update_group_setting(chat_id, 'welcome_enabled', new_value)
+    elif data == "panel_welcome":
         settings = get_group_settings(chat_id)
         await query.edit_message_text("👋 تنظیمات خوش‌آمدگویی:", reply_markup=keyboards.welcome_panel(settings))
 
     elif data == "change_welcome_text":
         await query.edit_message_text(
             "📝 لطفاً متن جدید خوش‌آمدگویی را با دستور زیر بفرستید:\n\n"
-            "`/تنظیم_متن_خوشامد [متن شما]`\n"
-            "مثال: `/تنظیم_متن_خوشامد سلام {name} عزیز!`",
+            "`/setwelcome [متن شما]`\n"
+            "مثال: `/setwelcome سلام {name} عزیز!`",
             parse_mode="Markdown"
         )
 
     elif data == "panel_warns":
         settings = get_group_settings(chat_id)
-        text = f"⚠️ حداکثر اخطار: {settings['max_warns']}\n🔨 مجازات: {settings['warn_action']}\n\nبرای تغییر از دستورات استفاده کنید:\n`/تنظیم_اخطار [عدد]`"
+        text = f"⚠️ حداکثر اخطار: {settings['max_warns']}\n🔨 مجازات: {settings['warn_action']}\n\nبرای تغییر از دستورات استفاده کنید:\n`/setmaxwarns [عدد]`"
         await query.edit_message_text(text, reply_markup=keyboards.main_panel(), parse_mode="Markdown")
 
     elif data == "panel_purge":
         await query.edit_message_text(
-            "🧹 برای پاکسازی پیام‌ها، روی آخرین پیامی که می‌خواهید بماند ریپلای کنید و دستور `/پاکسازی` را بزنید.",
+            "🧹 برای پاکسازی پیام‌ها، روی آخرین پیامی که می‌خواهید بماند ریپلای کنید و دستور `/purge` را بزنید.",
             reply_markup=keyboards.main_panel()
         )
 
-# ================= دستورات مدیریتی =================
+# ================= راهنما =================
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "🤖 **راهنمای دستورات ربات**\n\n"
+        "شما می‌توانید با کلیک روی دکمه‌های زیر، دستورات را کپی کنید و سپس در گروه پیست کنید:\n\n"
+        "🔹 `/warn` : اخطار به کاربر (روی پیام کاربر ریپلای کنید)\n"
+        "🔹 `/mutetime 1h` : سکوت موقت (1h یعنی ۱ ساعت، 30m یعنی ۳۰ دقیقه)\n"
+        "🔹 `/purge` : پاکسازی پیام‌ها (روی پیامی که می‌خواهید از آنجا پاک شود ریپلای کنید)\n"
+        "🔹 `/setwelcome متن` : تغییر متن خوش‌آمدگویی\n"
+        "🔹 `/setmaxwarns 3` : تنظیم حداکثر اخطار برای سکوت خودکار\n\n"
+        "🎛 برای باز کردن پنل مدیریت از دستور `/panel` استفاده کنید."
+    )
+    await update.message.reply_text(help_text, reply_markup=keyboards.help_keyboard(), parse_mode="Markdown")
 
+# ================= توابع مرحله ۳ =================
 async def change_welcome_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context): return
     if not context.args:
-        await update.message.reply_text("❗️ متن را وارد کنید. مثال: `/تنظیم_متن_خوشامد سلام {name}`", parse_mode="Markdown")
+        await update.message.reply_text("❗️ متن را وارد کنید. مثال: `/setwelcome سلام {name}`", parse_mode="Markdown")
         return
     text = " ".join(context.args)
     update_group_setting(update.effective_chat.id, 'welcome_text', text)
@@ -86,7 +101,7 @@ async def set_max_warns(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_group_setting(update.effective_chat.id, 'max_warns', count)
         await update.message.reply_text(f"✅ حداکثر اخطار به {count} تغییر یافت.")
     except (IndexError, ValueError):
-        await update.message.reply_text("❗️ یک عدد وارد کنید. مثال: `/تنظیم_اخطار 3`")
+        await update.message.reply_text("❗️ یک عدد وارد کنید. مثال: `/setmaxwarns 3`")
 
 async def mute_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context): return
@@ -110,7 +125,7 @@ async def mute_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(f"🔇 {target.mention_html()} برای {time_str} سکوت شد.", parse_mode="HTML")
     except (IndexError, ValueError):
-        await update.message.reply_text("❗️ فرمت زمان اشتباه است. مثال: `/سکوت_زمان_دار 1h` یا `30m`")
+        await update.message.reply_text("❗️ فرمت زمان اشتباه است. مثال: `/mutetime 1h` یا `30m`")
 
 async def purge_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context): return
@@ -128,11 +143,11 @@ async def purge_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.delete_message(update.effective_chat.id, msg_id)
             count += 1
         except Exception:
-            pass # بعضی پیام‌ها ممکن است قبلا پاک شده باشند
+            pass
     
     await message.reply_text(f"🧹 {count} پیام پاکسازی شد.")
 
-# ================= توابع مرحله ۱ =================
+# ================= توابع مرحله ۲ =================
 async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_admin(update, context): return
     target = await get_target_user(update, context)
@@ -199,20 +214,3 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ {target.mention_html()} رفع بن شد.", parse_mode="HTML")
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {e}")
-        # ================= راهنمای ربات =================
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "🤖 **راهنمای دستورات ربات**\n\n"
-        "شما می‌توانید با کلیک روی دکمه‌های زیر، دستورات را کپی کنید و سپس در گروه پیست کنید:\n\n"
-        "🔹 `/warn` : اخطار به کاربر (روی پیام کاربر ریپلای کنید)\n"
-        "🔹 `/mutetime 1h` : سکوت موقت (1h یعنی ۱ ساعت، 30m یعنی ۳۰ دقیقه)\n"
-        "🔹 `/purge` : پاکسازی پیام‌ها (روی پیامی که می‌خواهید از آنجا پاک شود ریپلای کنید)\n"
-        "🔹 `/setwelcome متن` : تغییر متن خوش‌آمدگویی\n"
-        "🔹 `/setmaxwarns 3` : تنظیم حداکثر اخطار برای سکوت خودکار\n\n"
-        "🎛 برای باز کردن پنل مدیریت از دستور `/panel` استفاده کنید."
-    )
-    await update.message.reply_text(
-        help_text, 
-        reply_markup=keyboards.help_keyboard(), 
-        parse_mode="Markdown"
-    )
