@@ -23,28 +23,13 @@ def main():
     init_db()
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # ================= پنل =================
+    # ================= پنل و راهنما =================
     app.add_handler(CommandHandler("panel", admin.panel_command))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^پنل$'), admin.panel_command))
-    
-    # ================= راهنما =================
-    app.add_handler(CommandHandler("help", admin.help_command))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^راهنما$'), admin.help_command))
 
     # ================= دکمه‌های شیشه‌ای =================
     app.add_handler(CallbackQueryHandler(admin.panel_callback, pattern=r"^(panel_|toggle_)"))
-
-    # ================= دستورات انگلیسی =================
-    app.add_handler(CommandHandler("warn", admin.warn_user))
-    app.add_handler(CommandHandler("unwarn", admin.reset_user_warns))
-    app.add_handler(CommandHandler("mute", admin.mute_user))
-    app.add_handler(CommandHandler("unmute", admin.unmute_user))
-    app.add_handler(CommandHandler("ban", admin.ban_user))
-    app.add_handler(CommandHandler("unban", admin.unban_user))
-    app.add_handler(CommandHandler("setmaxwarns", admin.set_max_warns))
-    app.add_handler(CommandHandler("setwelcome", admin.change_welcome_text))
-    app.add_handler(CommandHandler("mutetime", admin.mute_time))
-    app.add_handler(CommandHandler("purge", admin.purge_messages))
 
     # ================= دستورات فارسی (بدون اسلش) =================
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^اخطار$'), admin.warn_user))
@@ -54,7 +39,11 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^بن$'), admin.ban_user))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^رفع بن$'), admin.unban_user))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^پاکسازی$'), admin.purge_messages))
-    # برای دستورات پارامتری، باید از اسلش انگلیسی استفاده کرد یا با Regex پیچیده‌تر پیاده‌سازی کرد.
+    
+    # دستورات با پارامتر (با Regex خاص)
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^سکوت \d+[hm]$'), admin.mute_time))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^حداکثر اخطار \d+$'), admin.set_max_warns))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^تنظیم خوشامد .+'), admin.change_welcome_text))
 
     # ================= فیلترها =================
     filter_group = filters.ChatType.GROUPS & ~filters.StatusUpdate.ALL
