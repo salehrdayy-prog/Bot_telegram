@@ -1,0 +1,32 @@
+name: Run Telegram Bot
+
+on:
+  push:
+    branches: [ "main" ] # یا master
+  workflow_dispatch: # اجازه اجرای دستی
+  schedule:
+    - cron: '0 */5 * * *' # هر ۵ ساعت یک بار ری‌استارت می‌شود تا قطع نشود
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # کمتر از ۶ ساعت
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install python-telegram-bot[job-queue]
+
+    - name: Run Bot
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      run: python main.py
