@@ -1,18 +1,26 @@
 from aiogram import Router, F
-from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.enums import ChatType
 
-from database import (
-    LOCKS,
-    ensure_group,
-    get_locks,
-    set_lock,
-)
-
+from database import LOCKS, ensure_group, get_locks, set_lock
 from keyboards import locks_keyboard
 
 router = Router()
+
+
+# ==================================================
+# TEXT NORMALIZATION
+# ==================================================
+
+def normalize_command(text: str) -> str:
+    text = text.strip().lower()
+
+    text = text.replace("ي", "ی")
+    text = text.replace("ك", "ک")
+    text = text.replace("\u200c", " ")
+    text = " ".join(text.split())
+
+    return text
 
 
 # ==================================================
@@ -53,10 +61,11 @@ def get_locks_text(locks: dict) -> str:
 
 
 # ==================================================
-# SHOW LOCK PANEL
+# SHOW PANEL
 # ==================================================
 
 async def show_locks_panel(message: Message):
+
     if message.chat.type not in (
         ChatType.GROUP,
         ChatType.SUPERGROUP
@@ -75,7 +84,7 @@ async def show_locks_panel(message: Message):
         message.from_user.id
     ):
         await message.answer(
-            "⛔ فقط مدیران گروه می‌توانند پنل قفل‌ها را باز کنند."
+            "⛔ فقط مدیران گروه اجازه دسترسی دارند."
         )
         return
 
@@ -93,19 +102,32 @@ async def show_locks_panel(message: Message):
 
 
 # ==================================================
-# /locks COMMAND
+# LOCK COMMANDS
 # ==================================================
 
-@router.message(Command("locks"))
-async def locks_command(message: Message):
-    await show_locks_panel(message)
+@router.message(F.text)
+async def locks_text_handler(message: Message):
 
+    if not message.text:
+        return
 
-@router.message(
-    F.text.in_({"قفل‌ها", "قفل ها", "پنل قفل‌ها"})
-)
-async def locks_text_command(message: Message):
-    await show_locks_panel(message)
+    text = normalize_command(message.text)
+
+    # پشتیبانی از /locks و /locks@BotUsername
+    command = text.split()[0].split("@")[0]
+
+    if command == "/locks":
+        await show_locks_panel(message)
+        return
+
+    # پشتیبانی از شکل‌های مختلف فارسی
+    if text in {
+        "قفل ها",
+        "قفلها",
+        "پنل قفل ها",
+        "قفل",
+    }:
+        await show_locks_panel(message)
 
 
 # ==================================================
@@ -183,7 +205,7 @@ async def toggle_lock(callback: CallbackQuery):
         callback.from_user.id
     ):
         await callback.answer(
-            "⛔ فقط مدیران گروه می‌توانند قفل‌ها را تغییر دهند.",
+            "⛔ فقط مدیران گروه اجازه تغییر قفل‌ها را دارند.",
             show_alert=True
         )
         return
@@ -192,16 +214,15 @@ async def toggle_lock(callback: CallbackQuery):
 
     if lock_type not in LOCKS:
         await callback.answer(
-            "❌ قفل موردنظر معتبر نیست.",
+            "❌ قفل نامعتبر است.",
             show_alert=True
         )
         return
 
     await ensure_group(chat.id, chat.title or "")
 
-    current_status = await get_locks(chat.id)
-
-    new_status = not current_status[lock_type]
+    current_locks = await get_locks(chat.id)
+    new_status = not current_locks[lock_type]
 
     await set_lock(
         chat.id,
@@ -216,15 +237,13 @@ async def toggle_lock(callback: CallbackQuery):
         reply_markup=locks_keyboard(updated_locks)
     )
 
-    lock_name = LOCKS[lock_type]
-
     await callback.answer(
-        f"{'🔒 قفل شد' if new_status else '🔓 باز شد'}: {lock_name}"
+        f"{'🔒 قفل شد' if new_status else '🔓 باز شد'}: {LOCKS[lock_type]}"
     )
 
 
 # ==================================================
-# OPEN ALL LOCKS
+# OPEN ALL
 # ==================================================
 
 @router.callback_query(F.data == "locks:open_all")
@@ -236,35 +255,19 @@ async def open_all_locks(callback: CallbackQuery):
 
     chat = callback.message.chat
 
-    if chat.type not in (
-        ChatType.GROUP,
-        ChatType.SUPERGROUP
-    ):
-        await callback.answer(
-            "فقط داخل گروه قابل استفاده است.",
-            show_alert=True
-        )
-        return
-
     if not await is_group_admin(
         callback.bot,
         chat.id,
         callback.from_user.id
     ):
         await callback.answer(
-            "⛔ دسترسی فقط برای مدیران گروه است.",
+            "⛔ فقط مدیران گروه اجازه دارند.",
             show_alert=True
         )
         return
 
-    await ensure_group(chat.id, chat.title or "")
-
     for lock_type in LOCKS:
-        await set_lock(
-            chat.id,
-            lock_type,
-            False
-        )
+        await set_lock(chat.id, lock_type, False)
 
     locks = await get_locks(chat.id)
 
@@ -273,13 +276,11 @@ async def open_all_locks(callback: CallbackQuery):
         reply_markup=locks_keyboard(locks)
     )
 
-    await callback.answer(
-        "🔓 تمام قفل‌ها باز شدند."
-    )
+    await callback.answer("🔓 تمام قفل‌ها باز شدند.")
 
 
 # ==================================================
-# CLOSE ALL LOCKS
+# CLOSE ALL
 # ==================================================
 
 @router.callback_query(F.data == "locks:close_all")
@@ -291,35 +292,19 @@ async def close_all_locks(callback: CallbackQuery):
 
     chat = callback.message.chat
 
-    if chat.type not in (
-        ChatType.GROUP,
-        ChatType.SUPERGROUP
-    ):
-        await callback.answer(
-            "فقط داخل گروه قابل استفاده است.",
-            show_alert=True
-        )
-        return
-
     if not await is_group_admin(
         callback.bot,
         chat.id,
         callback.from_user.id
     ):
         await callback.answer(
-            "⛔ دسترسی فقط برای مدیران گروه است.",
+            "⛔ فقط مدیران گروه اجازه دارند.",
             show_alert=True
         )
         return
 
-    await ensure_group(chat.id, chat.title or "")
-
     for lock_type in LOCKS:
-        await set_lock(
-            chat.id,
-            lock_type,
-            True
-        )
+        await set_lock(chat.id, lock_type, True)
 
     locks = await get_locks(chat.id)
 
@@ -328,6 +313,4 @@ async def close_all_locks(callback: CallbackQuery):
         reply_markup=locks_keyboard(locks)
     )
 
-    await callback.answer(
-        "🔒 تمام قفل‌ها فعال شدند."
-    )
+    await callback.answer("🔒 تمام قفل‌ها فعال شدند.")
