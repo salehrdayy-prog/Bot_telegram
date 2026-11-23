@@ -6,10 +6,48 @@ from config import DATABASE_PATH
 DB_PATH = DATABASE_PATH
 
 
+# ==================================================
+# AZRAEL LOCKS
+# همه قفل‌ها به‌صورت پیش‌فرض غیرفعال هستند.
+# ==================================================
+
+LOCKS = {
+    "links": "لینک‌ها",
+    "forwards": "پیام‌های فورواردی",
+    "text": "پیام‌های متنی",
+    "hashtags": "هشتگ‌ها",
+    "mentions": "منشن‌ها",
+    "phone_numbers": "شماره تلفن",
+    "emojis": "ایموجی‌ها",
+    "photos": "عکس‌ها",
+    "videos": "ویدیوها",
+    "gifs": "گیف‌ها",
+    "stickers": "استیکرها",
+    "voice": "پیام‌های صوتی",
+    "video_notes": "ویدیو مسیج",
+    "audio": "موزیک و فایل صوتی",
+    "files": "فایل‌ها و اسناد",
+    "contacts": "مخاطبین",
+    "locations": "موقعیت مکانی",
+    "polls": "نظرسنجی‌ها",
+    "bots": "پیام ربات‌ها",
+    "new_members": "پیام ورود اعضای جدید",
+    "group_info": "تغییرات اطلاعات گروه",
+    "group_photo": "تغییر عکس گروه",
+    "poll_creation": "ساخت نظرسنجی",
+    "service_messages": "پیام‌های سیستمی",
+}
+
+
+# ==================================================
+# DATABASE INITIALIZATION
+# ==================================================
+
 async def init_db():
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
 
     async with aiosqlite.connect(DB_PATH) as db:
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS groups (
                 group_id INTEGER PRIMARY KEY,
@@ -61,8 +99,13 @@ async def init_db():
         await db.commit()
 
 
+# ==================================================
+# GROUP MANAGEMENT
+# ==================================================
+
 async def ensure_group(group_id: int, title: str = ""):
     async with aiosqlite.connect(DB_PATH) as db:
+
         await db.execute("""
             INSERT OR IGNORE INTO groups (group_id, title)
             VALUES (?, ?)
@@ -70,7 +113,8 @@ async def ensure_group(group_id: int, title: str = ""):
 
         if title:
             await db.execute("""
-                UPDATE groups SET title = ?
+                UPDATE groups
+                SET title = ?
                 WHERE group_id = ?
             """, (title, group_id))
 
@@ -79,19 +123,31 @@ async def ensure_group(group_id: int, title: str = ""):
 
 async def get_group(group_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
+
         db.row_factory = aiosqlite.Row
 
-        cursor = await db.execute(
-            "SELECT * FROM groups WHERE group_id = ?",
-            (group_id,)
-        )
+        cursor = await db.execute("""
+            SELECT *
+            FROM groups
+            WHERE group_id = ?
+        """, (group_id,))
 
         row = await cursor.fetchone()
+
         return dict(row) if row else None
 
 
-async def set_group_setting(group_id: int, key: str, value: str):
+# ==================================================
+# GROUP SETTINGS
+# ==================================================
+
+async def set_group_setting(
+    group_id: int,
+    key: str,
+    value: str
+):
     async with aiosqlite.connect(DB_PATH) as db:
+
         await db.execute("""
             INSERT INTO settings (group_id, key, value)
             VALUES (?, ?, ?)
@@ -102,19 +158,35 @@ async def set_group_setting(group_id: int, key: str, value: str):
         await db.commit()
 
 
-async def get_group_setting(group_id: int, key: str, default=None):
+async def get_group_setting(
+    group_id: int,
+    key: str,
+    default=None
+):
     async with aiosqlite.connect(DB_PATH) as db:
+
         cursor = await db.execute("""
-            SELECT value FROM settings
+            SELECT value
+            FROM settings
             WHERE group_id = ? AND key = ?
         """, (group_id, key))
 
         row = await cursor.fetchone()
+
         return row[0] if row else default
 
 
-async def add_warning(group_id: int, user_id: int, reason: str = ""):
+# ==================================================
+# WARNINGS
+# ==================================================
+
+async def add_warning(
+    group_id: int,
+    user_id: int,
+    reason: str = ""
+):
     async with aiosqlite.connect(DB_PATH) as db:
+
         await db.execute("""
             INSERT INTO warnings (group_id, user_id, reason)
             VALUES (?, ?, ?)
@@ -123,19 +195,29 @@ async def add_warning(group_id: int, user_id: int, reason: str = ""):
         await db.commit()
 
 
-async def get_warnings(group_id: int, user_id: int):
+async def get_warnings(
+    group_id: int,
+    user_id: int
+):
     async with aiosqlite.connect(DB_PATH) as db:
+
         cursor = await db.execute("""
-            SELECT COUNT(*) FROM warnings
+            SELECT COUNT(*)
+            FROM warnings
             WHERE group_id = ? AND user_id = ?
         """, (group_id, user_id))
 
         row = await cursor.fetchone()
+
         return row[0] if row else 0
 
 
-async def reset_warnings(group_id: int, user_id: int):
+async def reset_warnings(
+    group_id: int,
+    user_id: int
+):
     async with aiosqlite.connect(DB_PATH) as db:
+
         await db.execute("""
             DELETE FROM warnings
             WHERE group_id = ? AND user_id = ?
@@ -144,24 +226,98 @@ async def reset_warnings(group_id: int, user_id: int):
         await db.commit()
 
 
-async def set_lock(group_id: int, lock_type: str, enabled: bool):
+# ==================================================
+# LOCK MANAGEMENT
+# ==================================================
+
+async def set_lock(
+    group_id: int,
+    lock_type: str,
+    enabled: bool
+):
+    if lock_type not in LOCKS:
+        raise ValueError(f"Unknown lock type: {lock_type}")
+
     async with aiosqlite.connect(DB_PATH) as db:
+
         await db.execute("""
-            INSERT INTO locks (group_id, lock_type, enabled)
+            INSERT INTO locks (
+                group_id,
+                lock_type,
+                enabled
+            )
             VALUES (?, ?, ?)
+
             ON CONFLICT(group_id, lock_type)
             DO UPDATE SET enabled = excluded.enabled
-        """, (group_id, lock_type, int(enabled)))
+        """, (
+            group_id,
+            lock_type,
+            int(enabled)
+        ))
 
         await db.commit()
 
 
-async def get_lock(group_id: int, lock_type: str):
+async def get_lock(
+    group_id: int,
+    lock_type: str
+) -> bool:
+
+    if lock_type not in LOCKS:
+        return False
+
     async with aiosqlite.connect(DB_PATH) as db:
+
         cursor = await db.execute("""
-            SELECT enabled FROM locks
-            WHERE group_id = ? AND lock_type = ?
+            SELECT enabled
+            FROM locks
+            WHERE group_id = ?
+            AND lock_type = ?
         """, (group_id, lock_type))
 
         row = await cursor.fetchone()
+
         return bool(row[0]) if row else False
+
+
+async def get_locks(group_id: int) -> dict:
+    """
+    دریافت وضعیت تمام ۲۴ قفل یک گروه.
+    قفل‌هایی که هنوز تنظیم نشده‌اند، باز هستند.
+    """
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        cursor = await db.execute("""
+            SELECT lock_type, enabled
+            FROM locks
+            WHERE group_id = ?
+        """, (group_id,))
+
+        rows = await cursor.fetchall()
+
+        saved_locks = {
+            lock_type: bool(enabled)
+            for lock_type, enabled in rows
+        }
+
+        return {
+            lock_type: saved_locks.get(lock_type, False)
+            for lock_type in LOCKS
+        }
+
+
+async def reset_locks(group_id: int):
+    """
+    باز کردن تمام قفل‌های یک گروه.
+    """
+
+    async with aiosqlite.connect(DB_PATH) as db:
+
+        await db.execute("""
+            DELETE FROM locks
+            WHERE group_id = ?
+        """, (group_id,))
+
+        await db.commit()
