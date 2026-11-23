@@ -1,39 +1,39 @@
-name: Run Telegram Bot
+name: Unlimited Telegram Bot
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   workflow_dispatch:
-  schedule:
-    - cron: '0 */5 * * *' # ری‌استارت خودکار هر ۵ ساعت
 
 permissions:
-  contents: write # نیاز برای بکاپ دیتابیس در گیت‌هاب
+  contents: read
+
+concurrency:
+  group: unlimited-bot
+  cancel-in-progress: true
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0 # برای جلوگیری از خطای پوش در گیت
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install python-telegram-bot[job-queue]
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Run Bot
-      env:
-        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        GITHUB_REPO_URL: ${{ github.repository }} # به صورت خودکار نام کاربری/مخزن را می‌خواند
-      run: python main.py
+      - name: Run Telegram Bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          OWNER_ID: ${{ secrets.OWNER_ID }}
+        run: python main.py
