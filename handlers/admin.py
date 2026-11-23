@@ -6,7 +6,7 @@ from aiogram.types import Message, ChatPermissions
 from aiogram.enums import ChatType
 from aiogram.filters import Command
 
-from config import MAX_WARNINGS
+from config import MAX_WARNINGS, BOT_NAME
 from database import (
     add_warning,
     get_warnings,
@@ -46,7 +46,6 @@ def get_command(message: Message):
         command = command[1:]
 
     command = normalize_text(command)
-
     return command, parts[1:]
 
 
@@ -150,7 +149,7 @@ async def ping(message: Message):
 @router.message(Command("info"))
 async def bot_info(message: Message):
     await message.reply(
-        "🤖 ربات مدیریت گروه\n"
+        f"🤖 {BOT_NAME} | عزرائیل\n"
         "نسخه: 0.2.0\n"
         "وضعیت: فعال"
     )
@@ -218,7 +217,7 @@ async def management_commands(message: Message):
 
     if command == "اطلاعات":
         await message.reply(
-            "🤖 Unlimited Bot\n"
+            f"🤖 {BOT_NAME} | عزرائیل\n"
             "نسخه: 0.2.0\n"
             f"شناسه گروه: {message.chat.id}\n"
             "وضعیت: فعال"
@@ -285,7 +284,6 @@ async def management_commands(message: Message):
         reason = " ".join(remaining).strip()
 
         if command == "اخطار":
-
             await add_warning(
                 message.chat.id,
                 target_id,
@@ -330,7 +328,7 @@ async def management_commands(message: Message):
 
             else:
                 await message.reply(
-                    f"⚠️ یک اخطار ثبت شد.\n"
+                    "⚠️ یک اخطار ثبت شد.\n"
                     f"👤 کاربر: {target_id}\n"
                     f"📊 اخطارها: {count}/{MAX_WARNINGS}\n"
                     f"📝 دلیل: {reason or 'بدون دلیل'}"
