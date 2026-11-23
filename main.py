@@ -13,9 +13,11 @@ from handlers.admin import router as admin_router
 from handlers.filters import router as filters_router
 from handlers.welcome import router as welcome_router
 from handlers.help import router as help_router
+from handlers.locks import router as locks_router
 
 
 async def main():
+
     if not BOT_TOKEN:
         logging.critical("BOT_TOKEN تنظیم نشده است.")
         sys.exit(1)
@@ -29,17 +31,21 @@ async def main():
 
     dp = Dispatcher()
 
+    # راه‌اندازی دیتابیس
     await init_db()
 
+    # اتصال هندلرها
     dp.include_router(help_router)
+    dp.include_router(locks_router)
     dp.include_router(admin_router)
     dp.include_router(welcome_router)
     dp.include_router(filters_router)
 
+    # اطلاعات ربات
     bot_info = await bot.get_me()
 
     logging.info(
-        "Bot started: @%s | ID: %s",
+        "AZRAEL started: @%s | ID: %s",
         bot_info.username,
         bot_info.id
     )
@@ -50,11 +56,13 @@ async def main():
             allowed_updates=dp.resolve_used_update_types(),
             drop_pending_updates=False
         )
+
     finally:
         await bot.session.close()
 
 
 if __name__ == "__main__":
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s"
@@ -62,5 +70,6 @@ if __name__ == "__main__":
 
     try:
         asyncio.run(main())
+
     except KeyboardInterrupt:
-        logging.info("Bot stopped.")
+        logging.info("AZRAEL stopped.")
