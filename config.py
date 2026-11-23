@@ -13,7 +13,7 @@ logger = logging.getLogger("UnlimitedBot")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # شناسه مالک ربات (اختیاری)
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+OWNER_ID = int(os.getenv("OWNER_ID") or "0")
 
 # نام ربات
 BOT_NAME = "UnlimitedBot"
