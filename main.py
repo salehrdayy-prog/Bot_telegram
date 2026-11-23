@@ -31,17 +31,15 @@ async def main():
 
     dp = Dispatcher()
 
-    # راه‌اندازی دیتابیس
     await init_db()
 
-    # اتصال هندلرها
+    # ثبت هندلرها
     dp.include_router(help_router)
     dp.include_router(locks_router)
     dp.include_router(admin_router)
     dp.include_router(welcome_router)
     dp.include_router(filters_router)
 
-    # اطلاعات ربات
     bot_info = await bot.get_me()
 
     logging.info(
