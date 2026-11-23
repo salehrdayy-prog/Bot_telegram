@@ -12,6 +12,7 @@ from database import init_db
 from handlers.admin import router as admin_router
 from handlers.filters import router as filters_router
 from handlers.welcome import router as welcome_router
+from handlers.help import router as help_router
 
 
 async def main():
@@ -28,15 +29,13 @@ async def main():
 
     dp = Dispatcher()
 
-    # راه‌اندازی دیتابیس
     await init_db()
 
-    # ثبت روترها
+    dp.include_router(help_router)
     dp.include_router(admin_router)
     dp.include_router(welcome_router)
     dp.include_router(filters_router)
 
-    # اطلاعات ربات
     bot_info = await bot.get_me()
 
     logging.info(
