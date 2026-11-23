@@ -1,31 +1,76 @@
-from telegram import Update
-from telegram.ext import ContextTypes
-from database import get_group_settings
+from aiogram import Router
+from aiogram.types import Message
+from aiogram.enums import ChatType
 
-async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.effective_message
-    chat = update.effective_chat
-    if not message or not message.new_chat_members:
+from database import ensure_group, get_group
+
+router = Router()
+
+
+DEFAULT_WELCOME = (
+    "👋 سلام {name}!\n"
+    "به گروه {group} خوش اومدی.\n"
+    "امیدواریم لحظات خوبی داشته باشی ❤️"
+)
+
+DEFAULT_GOODBYE = (
+    "👋 {name} از گروه خارج شد."
+)
+
+
+@router.message(lambda message: message.new_chat_members is not None)
+async def welcome_new_members(message: Message):
+    if message.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
         return
 
-    settings = get_group_settings(chat.id)
-    if not settings['welcome_enabled']:
+    await ensure_group(
+        message.chat.id,
+        message.chat.title or ""
+    )
+
+    group_data = await get_group(message.chat.id)
+
+    if group_data and not group_data.get("welcome_enabled", 1):
         return
 
     for member in message.new_chat_members:
-        text = settings['welcome_text'].replace("{name}", member.first_name or "کاربر")
-        await message.reply_text(text)
+        if member.is_bot:
+            continue
 
-async def goodbye_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.effective_message
-    chat = update.effective_chat
-    if not message or not message.left_chat_member:
-        return
+        name = member.first_name or "دوست عزیز"
 
-    settings = get_group_settings(chat.id)
-    if not settings['goodbye_enabled']:
+        welcome_text = (
+            group_data.get("welcome_text", DEFAULT_WELCOME)
+            if group_data
+            else DEFAULT_WELCOME
+        )
+
+        try:
+            text = welcome_text.format(
+                name=name,
+                group=message.chat.title or "گروه"
+            )
+        except (KeyError, ValueError):
+            text = DEFAULT_WELCOME.format(
+                name=name,
+                group=message.chat.title or "گروه"
+            )
+
+        await message.answer(text)
+
+
+@router.message(lambda message: message.left_chat_member is not None)
+async def goodbye_member(message: Message):
+    if message.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
         return
 
     member = message.left_chat_member
-    text = settings['goodbye_text'].replace("{name}", member.first_name or "کاربر")
-    await message.reply_text(text)
+
+    if member.is_bot:
+        return
+
+    name = member.first_name or "کاربر"
+
+    await message.answer(
+        DEFAULT_GOODBYE.format(name=name)
+    )
