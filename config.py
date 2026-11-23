@@ -1,39 +1,71 @@
 import os
 import logging
 
-# تنظیمات لاگ
+# ==================================================
+# LOGGING
+# ==================================================
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
 
-logger = logging.getLogger("UnlimitedBot")
+logger = logging.getLogger("AZRAEL")
 
-# توکن ربات از GitHub Secrets
+
+# ==================================================
+# BOT CONFIGURATION
+# ==================================================
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# شناسه مالک ربات (اختیاری)
 OWNER_ID = int(os.getenv("OWNER_ID") or "0")
 
-# نام ربات
-BOT_NAME = "UnlimitedBot"
+BOT_NAME = "AZRAEL"
 
-# مسیر دیتابیس
-DATABASE_PATH = os.getenv("DATABASE_PATH", "group_manager.db")
 
-# تنظیمات ضدفلود
+# ==================================================
+# DATABASE
+# ==================================================
+
+DATABASE_PATH = os.getenv(
+    "DATABASE_PATH",
+    "group_manager.db"
+)
+
+
+# ==================================================
+# ANTI FLOOD
+# ==================================================
+
 FLOOD_LIMIT = 5
 FLOOD_TIME = 5
 
-# تنظیمات اخطار
+
+# ==================================================
+# WARNINGS
+# ==================================================
+
 MAX_WARNINGS = 3
 
-# تنظیمات خوشامدگویی
+
+# ==================================================
+# WELCOME
+# ==================================================
+
 WELCOME_ENABLED = True
 
-# منطقه زمانی
+
+# ==================================================
+# TIMEZONE
+# ==================================================
+
 TIMEZONE = "Asia/Tehran"
 
+
+# ==================================================
+# VALIDATION
+# ==================================================
 
 if not BOT_TOKEN:
     logger.warning("BOT_TOKEN is not configured!")
