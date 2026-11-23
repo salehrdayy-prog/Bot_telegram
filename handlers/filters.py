@@ -1,98 +1,126 @@
-import logging
-import re
-from telegram import Update
-from telegram.ext import ContextTypes
-from database import get_group_settings
+import time
+from collections import defaultdict, deque
 
-log = logging.getLogger(__name__)
+from aiogram import Router
+from aiogram.types import Message
+from aiogram.enums import ChatType
 
-# الگوهای تشخیص
-LINK_REGEX = re.compile(r'(https?://|t\.me/|www\.)')
-USERNAME_REGEX = re.compile(r"@[a-zA-Z0-9_]{5,}")
-HASHTAG_REGEX = re.compile(r"#\w+")
-EMOJI_REGEX = re.compile(
-    "[" 
-    "\U0001F600-\U0001F64F"  # Emoticons
-    "\U0001F300-\U0001F5FF"  # Misc Symbols and Pictographs
-    "\U0001F680-\U0001F6FF"  # Transport and Map
-    "\U0001F1E0-\U0001F1FF"  # Flags
-    "\U00002702-\U000027B0"  # Dingbats
-    "\U000024C2-\U0001F251" 
-    "]+", flags=re.UNICODE
-)
+from config import FLOOD_LIMIT, FLOOD_TIME
+from database import get_lock
+from utils import contains_link, normalize_text
 
-async def filter_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.effective_message
-    chat = update.effective_chat
-    user = update.effective_user
-    
-    # فقط در گروه‌ها
-    if not message or not user or chat.type not in ["group", "supergroup"]:
+router = Router()
+
+# حافظه ضدفلود
+_user_messages = defaultdict(deque)
+
+# فیلتر کلمات هر گروه
+_group_bad_words = defaultdict(set)
+
+
+def register_bad_words(group_id: int, words: list[str]):
+    _group_bad_words[group_id] = {
+        normalize_text(word) for word in words if word.strip()
+    }
+
+
+def is_flood(group_id: int, user_id: int) -> bool:
+    now = time.monotonic()
+    key = (group_id, user_id)
+    messages = _user_messages[key]
+
+    while messages and now - messages[0] > FLOOD_TIME:
+        messages.popleft()
+
+    messages.append(now)
+
+    return len(messages) > FLOOD_LIMIT
+
+
+def contains_bad_word(group_id: int, text: str) -> bool:
+    normalized = normalize_text(text)
+
+    return any(
+        word and word in normalized
+        for word in _group_bad_words[group_id]
+    )
+
+
+@router.message()
+async def filter_messages(message: Message):
+    if message.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
         return
-    
-    # اگر کاربر ادمین است، فیلترها روی او اعمال نمی‌شوند
+
+    if not message.from_user or message.from_user.is_bot:
+        return
+
+    group_id = message.chat.id
+    user_id = message.from_user.id
+    text = message.text or message.caption or ""
+
+    # بررسی مدیر گروه
     try:
-        member = await chat.get_member(user.id)
-        if member.status in ["administrator", "creator"]:
+        member = await message.bot.get_chat_member(group_id, user_id)
+
+        if member.status in ("administrator", "creator"):
             return
     except Exception:
-        pass # اگر خطایی رخ داد، ادامه بده
+        pass
 
-    settings = get_group_settings(chat.id)
-    if not settings:
-        return
-
-    text_content = message.text or message.caption or ""
-    should_delete = False
-    reason = ""
-
-    # بررسی قفل‌ها (دقیق‌تر)
-    if settings.get('lock_link') and LINK_REGEX.search(text_content):
-        should_delete, reason = True, "لینک"
-    elif settings.get('lock_forward') and (message.forward_from or message.forward_from_chat or message.forward_origin):
-        should_delete, reason = True, "فوروارد"
-    elif settings.get('lock_username') and USERNAME_REGEX.search(text_content):
-        should_delete, reason = True, "یوزرنیم"
-    elif settings.get('lock_hashtag') and HASHTAG_REGEX.search(text_content):
-        should_delete, reason = True, "هشتگ"
-    elif settings.get('lock_emoji') and EMOJI_REGEX.search(text_content):
-        should_delete, reason = True, "ایموجی"
-    elif settings.get('lock_sticker') and message.sticker:
-        should_delete, reason = True, "استیکر"
-    elif settings.get('lock_gif') and message.animation:
-        should_delete, reason = True, "گیف"
-    elif settings.get('lock_photo') and message.photo:
-        should_delete, reason = True, "عکس"
-    elif settings.get('lock_video') and message.video:
-        should_delete, reason = True, "ویدیو"
-    elif settings.get('lock_file') and message.document:
-        should_delete, reason = True, "فایل"
-    elif settings.get('lock_voice') and message.voice:
-        should_delete, reason = True, "پیام صوتی"
-    elif settings.get('lock_audio') and message.audio:
-        should_delete, reason = True, "صدا"
-    elif settings.get('lock_poll') and message.poll:
-        should_delete, reason = True, "نظرسنجی"
-    elif settings.get('lock_contact') and message.contact:
-        should_delete, reason = True, "مخاطب"
-    elif settings.get('lock_location') and message.location:
-        should_delete, reason = True, "موقعیت"
-    elif settings.get('lock_game') and message.game:
-        should_delete, reason = True, "بازی"
-    elif settings.get('lock_bots') and user.is_bot:
-        should_delete, reason = True, "ربات"
-
-    if should_delete:
+    # ضدفلود
+    if is_flood(group_id, user_id):
         try:
             await message.delete()
-            warning = await context.bot.send_message(
-                chat.id,
-                f"⚠️ {user.mention_html()} ارسال {reason} ممنوع است.",
-                parse_mode="HTML"
-            )
-            context.job_queue.run_once(
-                lambda ctx: ctx.bot.delete_message(chat.id, warning.message_id),
-                5, name=f"del_{warning.message_id}"
-            )
-        except Exception as e:
-            log.error(f"Filter error: {e}")
+        except Exception:
+            pass
+        return
+
+    # قفل لینک
+    if text and await get_lock(group_id, "links") and contains_link(text):
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        return
+
+    # قفل عکس
+    if message.photo and await get_lock(group_id, "photos"):
+        await message.delete()
+        return
+
+    # قفل ویدیو
+    if message.video and await get_lock(group_id, "videos"):
+        await message.delete()
+        return
+
+    # قفل استیکر
+    if message.sticker and await get_lock(group_id, "stickers"):
+        await message.delete()
+        return
+
+    # قفل ویس
+    if message.voice and await get_lock(group_id, "voice"):
+        await message.delete()
+        return
+
+    # قفل فایل
+    if message.document and await get_lock(group_id, "files"):
+        await message.delete()
+        return
+
+    # قفل گیف
+    if message.animation and await get_lock(group_id, "gifs"):
+        await message.delete()
+        return
+
+    # قفل موسیقی
+    if message.audio and await get_lock(group_id, "audio"):
+        await message.delete()
+        return
+
+    # فیلتر کلمات
+    if text and contains_bad_word(group_id, text):
+        try:
+            await message.delete()
+        except Exception:
+            pass
