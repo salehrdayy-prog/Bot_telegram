@@ -3,12 +3,12 @@ import os
 
 from config import DATABASE_PATH
 
+
 DB_PATH = DATABASE_PATH
 
 
 # ==================================================
 # AZRAEL LOCKS
-# همه قفل‌ها به‌صورت پیش‌فرض غیرفعال هستند.
 # ==================================================
 
 LOCKS = {
@@ -40,11 +40,122 @@ LOCKS = {
 
 
 # ==================================================
+# DATABASE MIGRATION
+# ==================================================
+
+async def migrate_groups_table(db):
+    cursor = await db.execute("PRAGMA table_info(groups)")
+    columns = await cursor.fetchall()
+
+    column_names = {
+        column[1].lower()
+        for column in columns
+    }
+
+    if "group_id" not in column_names:
+
+        await db.execute("""
+            ALTER TABLE groups
+            ADD COLUMN group_id INTEGER
+        """)
+
+        # تلاش برای بازیابی شناسه گروه از ستون‌های قدیمی
+        candidates = (
+            "chat_id",
+            "telegram_chat_id",
+            "telegram_id",
+            "groupid",
+        )
+
+        old_column = next(
+            (
+                name for name in candidates
+                if name in column_names
+            ),
+            None
+        )
+
+        if old_column:
+            await db.execute(
+                f"""
+                UPDATE groups
+                SET group_id = "{old_column}"
+                WHERE group_id IS NULL
+                """
+            )
+
+        elif "id" in column_names:
+            # فقط شناسه‌های منفی، که معمولاً شناسه گروه تلگرام هستند
+            await db.execute("""
+                UPDATE groups
+                SET group_id = id
+                WHERE group_id IS NULL
+                AND id < 0
+            """)
+
+    # اضافه کردن ستون‌های احتمالیِ موجود نبودن
+    required_columns = {
+        "title": "TEXT DEFAULT ''",
+        "welcome_enabled": "INTEGER DEFAULT 1",
+        "welcome_text": "TEXT DEFAULT 'سلام {name}، به گروه خوش آمدی!'",
+        "rules": "TEXT DEFAULT ''",
+        "created_at": "TEXT",
+    }
+
+    cursor = await db.execute("PRAGMA table_info(groups)")
+    current_columns = {
+        row[1].lower()
+        for row in await cursor.fetchall()
+    }
+
+    for column, definition in required_columns.items():
+        if column not in current_columns:
+            await db.execute(
+                f'ALTER TABLE groups ADD COLUMN "{column}" {definition}'
+            )
+
+    await db.execute("""
+        UPDATE groups
+        SET title = ''
+        WHERE title IS NULL
+    """)
+
+    await db.execute("""
+        UPDATE groups
+        SET created_at = CURRENT_TIMESTAMP
+        WHERE created_at IS NULL OR created_at = ''
+    """)
+
+    # جلوگیری از شناسه‌های تکراری
+    await db.execute("""
+        DELETE FROM groups
+        WHERE group_id IS NOT NULL
+        AND rowid NOT IN (
+            SELECT MIN(rowid)
+            FROM groups
+            WHERE group_id IS NOT NULL
+            GROUP BY group_id
+        )
+    """)
+
+    await db.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_groups_group_id
+        ON groups(group_id)
+        WHERE group_id IS NOT NULL
+    """)
+
+
+# ==================================================
 # DATABASE INITIALIZATION
 # ==================================================
 
 async def init_db():
-    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+
+    os.makedirs(
+        os.path.dirname(DB_PATH) or ".",
+        exist_ok=True
+    )
 
     async with aiosqlite.connect(DB_PATH) as db:
 
@@ -58,6 +169,8 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        await migrate_groups_table(db)
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -104,6 +217,7 @@ async def init_db():
 # ==================================================
 
 async def ensure_group(group_id: int, title: str = ""):
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         await db.execute("""
@@ -122,6 +236,7 @@ async def ensure_group(group_id: int, title: str = ""):
 
 
 async def get_group(group_id: int):
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         db.row_factory = aiosqlite.Row
@@ -146,6 +261,7 @@ async def set_group_setting(
     key: str,
     value: str
 ):
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         await db.execute("""
@@ -163,6 +279,7 @@ async def get_group_setting(
     key: str,
     default=None
 ):
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         cursor = await db.execute("""
@@ -185,6 +302,7 @@ async def add_warning(
     user_id: int,
     reason: str = ""
 ):
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         await db.execute("""
@@ -199,6 +317,7 @@ async def get_warnings(
     group_id: int,
     user_id: int
 ):
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         cursor = await db.execute("""
@@ -216,6 +335,7 @@ async def reset_warnings(
     group_id: int,
     user_id: int
 ):
+
     async with aiosqlite.connect(DB_PATH) as db:
 
         await db.execute("""
@@ -235,6 +355,7 @@ async def set_lock(
     lock_type: str,
     enabled: bool
 ):
+
     if lock_type not in LOCKS:
         raise ValueError(f"Unknown lock type: {lock_type}")
 
@@ -282,10 +403,6 @@ async def get_lock(
 
 
 async def get_locks(group_id: int) -> dict:
-    """
-    دریافت وضعیت تمام ۲۴ قفل یک گروه.
-    قفل‌هایی که هنوز تنظیم نشده‌اند، باز هستند.
-    """
 
     async with aiosqlite.connect(DB_PATH) as db:
 
@@ -309,9 +426,6 @@ async def get_locks(group_id: int) -> dict:
 
 
 async def reset_locks(group_id: int):
-    """
-    باز کردن تمام قفل‌های یک گروه.
-    """
 
     async with aiosqlite.connect(DB_PATH) as db:
 
