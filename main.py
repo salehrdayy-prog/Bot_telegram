@@ -13,13 +13,14 @@ from handlers.admin import router as admin_router
 from handlers.filters import router as filters_router
 from handlers.welcome import router as welcome_router
 from handlers.help import router as help_router
-from handlers.locks import router as locks_router
 
 
 async def main():
 
     if not BOT_TOKEN:
-        logging.critical("BOT_TOKEN تنظیم نشده است.")
+        logging.critical(
+            "BOT_TOKEN تنظیم نشده است."
+        )
         sys.exit(1)
 
     bot = Bot(
@@ -33,9 +34,8 @@ async def main():
 
     await init_db()
 
-    # ثبت هندلرها
+    # ثبت Routerها
     dp.include_router(help_router)
-    dp.include_router(locks_router)
     dp.include_router(admin_router)
     dp.include_router(welcome_router)
     dp.include_router(filters_router)
