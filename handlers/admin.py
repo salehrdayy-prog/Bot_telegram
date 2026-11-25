@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 COMMANDS = {
     "پینگ",
-    "قفل ها",
     "شناسه",
     "اطلاعات",
     "مدیران",
