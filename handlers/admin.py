@@ -2,20 +2,26 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Router, F
-from aiogram.types import Message, ChatPermissions
+from aiogram.types import Message, ChatPermissions, CallbackQuery
 from aiogram.enums import ChatType
 from aiogram.filters import Command
+from aiogram.exceptions import TelegramBadRequest
 
 from config import MAX_WARNINGS, BOT_NAME
 from database import (
     add_warning,
     get_warnings,
     reset_warnings,
+    LOCKS,
+    ensure_group,
+    get_locks,
+    set_lock,
 )
+from keyboards import locks_keyboard
 from utils import is_admin, parse_duration, normalize_text
 
-router = Router()
-logger = logging.getLogger(__name__)
+router = Router(name="admin")
+logger = logging.getLogger("AZRAEL.ADMIN")
 
 COMMANDS = {
     "پینگ",
@@ -33,6 +39,10 @@ COMMANDS = {
 }
 
 
+# ==================================================
+# COMMAND HELPERS
+# ==================================================
+
 def get_command(message: Message):
     text = message.text or ""
     parts = text.strip().split()
@@ -49,6 +59,13 @@ def get_command(message: Message):
     return command, parts[1:]
 
 
+def normalize_lock_command(text: str) -> str:
+    text = text.strip().lower()
+    text = text.replace("ي", "ی").replace("ك", "ک")
+    text = text.replace("\u200c", " ")
+    return " ".join(text.split())
+
+
 async def get_target(message: Message, args: list):
     if message.reply_to_message and message.reply_to_message.from_user:
         return message.reply_to_message.from_user.id, args
@@ -62,6 +79,10 @@ async def get_target(message: Message, args: list):
 
     return None, args
 
+
+# ==================================================
+# ADMIN CHECKS
+# ==================================================
 
 async def check_admin(message: Message):
     if message.chat.type not in (
@@ -99,7 +120,9 @@ async def check_bot_admin(message: Message):
         )
 
         if member.status != "administrator":
-            await message.reply("❌ ربات باید مدیر گروه باشد.")
+            await message.reply(
+                "❌ ربات باید مدیر گروه باشد."
+            )
             return False
 
         return True
@@ -128,9 +151,36 @@ async def check_target(message: Message, user_id: int):
         return True
 
     except Exception:
-        await message.reply("❌ کاربر موردنظر پیدا نشد.")
+        await message.reply(
+            "❌ کاربر موردنظر پیدا نشد."
+        )
         return False
 
+
+async def is_group_admin(bot, chat_id: int, user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(
+            chat_id,
+            user_id
+        )
+
+        return member.status in (
+            "administrator",
+            "creator"
+        )
+
+    except Exception:
+        logger.exception(
+            "Group admin check failed | chat=%s | user=%s",
+            chat_id,
+            user_id
+        )
+        return False
+
+
+# ==================================================
+# BASIC COMMANDS
+# ==================================================
 
 @router.message(Command("id"))
 async def get_id(message: Message):
@@ -172,25 +222,369 @@ async def list_admins(message: Message):
 
         for admin in admins:
             user = admin.user
-            username = f" (@{user.username})" if user.username else ""
+            username = (
+                f" (@{user.username})"
+                if user.username else ""
+            )
 
             lines.append(
                 f"• {user.full_name}{username}"
             )
 
-        await message.reply("\n".join(lines))
+        await message.reply(
+            "\n".join(lines)
+        )
 
     except Exception:
-        logger.exception("Failed to get administrators")
+        logger.exception(
+            "Failed to get administrators"
+        )
+
         await message.reply(
             "❌ دریافت فهرست مدیران ناموفق بود."
         )
 
 
-# فقط پیام‌هایی که با یکی از دستورات مدیریت شروع می‌شوند
-# وارد هندلر مدیریت می‌شوند؛ پیام‌های دیگر به روترهای بعدی می‌رسند.
+# ==================================================
+# LOCK PANEL
+# ==================================================
+
+def get_locks_text(locks: dict) -> str:
+    active = sum(
+        bool(value)
+        for value in locks.values()
+    )
+
+    total = len(LOCKS)
+
+    return (
+        "🔒 <b>پنل مدیریت قفل‌های AZRAEL</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "از دکمه‌های زیر برای مدیریت قفل‌ها استفاده کن.\n\n"
+        f"🔒 قفل‌های فعال: <b>{active}</b>\n"
+        f"🔓 قفل‌های باز: <b>{total - active}</b>\n"
+        f"📊 مجموع قفل‌ها: <b>{total}</b>\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🛡 فقط مدیران گروه می‌توانند تنظیمات را تغییر دهند."
+    )
+
+
+async def update_panel(message: Message, chat_id: int):
+    locks = await get_locks(chat_id)
+
+    try:
+        await message.edit_text(
+            get_locks_text(locks),
+            reply_markup=locks_keyboard(locks)
+        )
+
+    except TelegramBadRequest as error:
+        if "message is not modified" not in str(error).lower():
+            raise
+
+
+async def show_locks_panel(message: Message):
+    if message.chat.type not in (
+        ChatType.GROUP,
+        ChatType.SUPERGROUP
+    ):
+        await message.answer(
+            "⚠️ این دستور فقط داخل گروه قابل استفاده است."
+        )
+        return
+
+    if not message.from_user:
+        return
+
+    if not await is_group_admin(
+        message.bot,
+        message.chat.id,
+        message.from_user.id
+    ):
+        await message.answer(
+            "⛔ فقط مدیران گروه می‌توانند پنل قفل‌ها را باز کنند."
+        )
+        return
+
+    await ensure_group(
+        message.chat.id,
+        message.chat.title or ""
+    )
+
+    locks = await get_locks(
+        message.chat.id
+    )
+
+    await message.answer(
+        get_locks_text(locks),
+        reply_markup=locks_keyboard(locks)
+    )
+
+
+# ==================================================
+# OPEN LOCKS PANEL
+# ==================================================
+
+@router.message(Command("locks"))
+async def locks_command(message: Message):
+    logger.info(
+        "/locks received | chat=%s | user=%s",
+        message.chat.id,
+        message.from_user.id if message.from_user else None
+    )
+
+    await show_locks_panel(message)
+
+
 @router.message(
-    F.text,
+    F.text.regexp(
+        r"^(قفل‌ها|قفل ها|قفلها|قفل|پنل قفل‌ها|پنل قفل ها)$"
+    )
+)
+async def locks_text_command(message: Message):
+    await show_locks_panel(message)
+
+
+# ==================================================
+# LOCK PANEL CALLBACK
+# ==================================================
+
+@router.callback_query(F.data == "menu:locks")
+async def open_locks_callback(callback: CallbackQuery):
+    if not callback.message:
+        await callback.answer()
+        return
+
+    chat = callback.message.chat
+
+    if chat.type not in (
+        ChatType.GROUP,
+        ChatType.SUPERGROUP
+    ):
+        await callback.answer(
+            "این پنل فقط داخل گروه قابل استفاده است.",
+            show_alert=True
+        )
+        return
+
+    if not await is_group_admin(
+        callback.bot,
+        chat.id,
+        callback.from_user.id
+    ):
+        await callback.answer(
+            "⛔ فقط مدیران گروه اجازه دسترسی دارند.",
+            show_alert=True
+        )
+        return
+
+    await ensure_group(
+        chat.id,
+        chat.title or ""
+    )
+
+    await update_panel(
+        callback.message,
+        chat.id
+    )
+
+    await callback.answer()
+
+
+# ==================================================
+# TOGGLE SINGLE LOCK
+# ==================================================
+
+@router.callback_query(F.data.startswith("lock:"))
+async def toggle_lock(callback: CallbackQuery):
+    if not callback.message:
+        await callback.answer()
+        return
+
+    chat = callback.message.chat
+
+    if chat.type not in (
+        ChatType.GROUP,
+        ChatType.SUPERGROUP
+    ):
+        await callback.answer(
+            "فقط داخل گروه قابل استفاده است.",
+            show_alert=True
+        )
+        return
+
+    if not await is_group_admin(
+        callback.bot,
+        chat.id,
+        callback.from_user.id
+    ):
+        await callback.answer(
+            "⛔ فقط مدیران اجازه تغییر قفل‌ها را دارند.",
+            show_alert=True
+        )
+        return
+
+    lock_type = callback.data.split(":", 1)[1]
+
+    if lock_type not in LOCKS:
+        await callback.answer(
+            "قفل نامعتبر است.",
+            show_alert=True
+        )
+        return
+
+    try:
+        await ensure_group(
+            chat.id,
+            chat.title or ""
+        )
+
+        current = await get_locks(chat.id)
+        new_status = not current[lock_type]
+
+        await set_lock(
+            chat.id,
+            lock_type,
+            new_status
+        )
+
+        await update_panel(
+            callback.message,
+            chat.id
+        )
+
+        await callback.answer(
+            f"{'🔒 قفل شد' if new_status else '🔓 باز شد'}: {LOCKS[lock_type]}"
+        )
+
+    except Exception:
+        logger.exception(
+            "Toggle lock failed"
+        )
+
+        await callback.answer(
+            "خطا در تغییر قفل.",
+            show_alert=True
+        )
+
+
+# ==================================================
+# OPEN ALL LOCKS
+# ==================================================
+
+@router.callback_query(F.data == "locks:open_all")
+async def open_all_locks(callback: CallbackQuery):
+    if not callback.message:
+        await callback.answer()
+        return
+
+    chat = callback.message.chat
+
+    if not await is_group_admin(
+        callback.bot,
+        chat.id,
+        callback.from_user.id
+    ):
+        await callback.answer(
+            "⛔ فقط مدیران اجازه دارند.",
+            show_alert=True
+        )
+        return
+
+    try:
+        await ensure_group(
+            chat.id,
+            chat.title or ""
+        )
+
+        for key in LOCKS:
+            await set_lock(
+                chat.id,
+                key,
+                False
+            )
+
+        await update_panel(
+            callback.message,
+            chat.id
+        )
+
+        await callback.answer(
+            "🔓 تمام قفل‌ها باز شدند."
+        )
+
+    except Exception:
+        logger.exception(
+            "Open all locks failed"
+        )
+
+        await callback.answer(
+            "خطا در بازکردن قفل‌ها.",
+            show_alert=True
+        )
+
+
+# ==================================================
+# CLOSE ALL LOCKS
+# ==================================================
+
+@router.callback_query(F.data == "locks:close_all")
+async def close_all_locks(callback: CallbackQuery):
+    if not callback.message:
+        await callback.answer()
+        return
+
+    chat = callback.message.chat
+
+    if not await is_group_admin(
+        callback.bot,
+        chat.id,
+        callback.from_user.id
+    ):
+        await callback.answer(
+            "⛔ فقط مدیران اجازه دارند.",
+            show_alert=True
+        )
+        return
+
+    try:
+        await ensure_group(
+            chat.id,
+            chat.title or ""
+        )
+
+        for key in LOCKS:
+            await set_lock(
+                chat.id,
+                key,
+                True
+            )
+
+        await update_panel(
+            callback.message,
+            chat.id
+        )
+
+        await callback.answer(
+            "🔒 تمام قفل‌ها فعال شدند."
+        )
+
+    except Exception:
+        logger.exception(
+            "Close all locks failed"
+        )
+
+        await callback.answer(
+            "خطا در فعال‌کردن قفل‌ها.",
+            show_alert=True
+        )
+
+
+# ==================================================
+# MANAGEMENT COMMANDS
+# ==================================================
+
+@router.message(
     F.text.regexp(
         r"^(?:/)?(?:پینگ|شناسه|اطلاعات|مدیران|اخطار|حذف_اخطار|تعداد_اخطار|سکوت|لغو_سکوت|مسدود|رفع_مسدودی|اخراج)(?:\s|$)"
     )
@@ -205,7 +599,9 @@ async def management_commands(message: Message):
         return
 
     if command == "پینگ":
-        await message.reply("🏓 ربات فعال است!")
+        await message.reply(
+            "🏓 ربات فعال است!"
+        )
         return
 
     if command == "شناسه":
@@ -236,7 +632,10 @@ async def management_commands(message: Message):
         return
 
     if command == "تعداد_اخطار":
-        target_id, _ = await get_target(message, args)
+        target_id, _ = await get_target(
+            message,
+            args
+        )
 
         if target_id is None:
             await message.reply(
@@ -275,7 +674,7 @@ async def management_commands(message: Message):
             )
             return
 
-        if target_id == message.from_user.id:
+        if message.from_user and target_id == message.from_user.id:
             await message.reply(
                 "❌ نمی‌توانی این عملیات را روی خودت انجام دهی."
             )
@@ -285,11 +684,15 @@ async def management_commands(message: Message):
             return
 
         if command != "رفع_مسدودی":
-            if not await check_target(message, target_id):
+            if not await check_target(
+                message,
+                target_id
+            ):
                 return
 
         reason = " ".join(remaining).strip()
 
+        # WARN
         if command == "اخطار":
             await add_warning(
                 message.chat.id,
@@ -327,7 +730,10 @@ async def management_commands(message: Message):
                     )
 
                 except Exception:
-                    logger.exception("Automatic mute failed")
+                    logger.exception(
+                        "Automatic mute failed"
+                    )
+
                     await message.reply(
                         f"⚠️ اخطار ثبت شد ({count}/{MAX_WARNINGS})، "
                         "اما سکوت خودکار ناموفق بود."
@@ -341,6 +747,7 @@ async def management_commands(message: Message):
                     f"📝 دلیل: {reason or 'بدون دلیل'}"
                 )
 
+        # RESET WARNINGS
         elif command == "حذف_اخطار":
             await reset_warnings(
                 message.chat.id,
@@ -351,6 +758,7 @@ async def management_commands(message: Message):
                 f"✅ تمام اخطارهای کاربر {target_id} پاک شدند."
             )
 
+        # MUTE
         elif command == "سکوت":
             duration = (
                 parse_duration(remaining[0])
@@ -386,9 +794,15 @@ async def management_commands(message: Message):
                 )
 
             except Exception:
-                logger.exception("Mute failed")
-                await message.reply("❌ اجرای سکوت ناموفق بود.")
+                logger.exception(
+                    "Mute failed"
+                )
 
+                await message.reply(
+                    "❌ اجرای سکوت ناموفق بود."
+                )
+
+        # UNMUTE
         elif command == "لغو_سکوت":
             try:
                 await message.bot.restrict_chat_member(
@@ -413,9 +827,15 @@ async def management_commands(message: Message):
                 )
 
             except Exception:
-                logger.exception("Unmute failed")
-                await message.reply("❌ لغو سکوت ناموفق بود.")
+                logger.exception(
+                    "Unmute failed"
+                )
 
+                await message.reply(
+                    "❌ لغو سکوت ناموفق بود."
+                )
+
+        # BAN
         elif command == "مسدود":
             try:
                 await message.bot.ban_chat_member(
@@ -428,9 +848,15 @@ async def management_commands(message: Message):
                 )
 
             except Exception:
-                logger.exception("Ban failed")
-                await message.reply("❌ مسدودسازی ناموفق بود.")
+                logger.exception(
+                    "Ban failed"
+                )
 
+                await message.reply(
+                    "❌ مسدودسازی ناموفق بود."
+                )
+
+        # UNBAN
         elif command == "رفع_مسدودی":
             try:
                 await message.bot.unban_chat_member(
@@ -444,9 +870,15 @@ async def management_commands(message: Message):
                 )
 
             except Exception:
-                logger.exception("Unban failed")
-                await message.reply("❌ رفع مسدودیت ناموفق بود.")
+                logger.exception(
+                    "Unban failed"
+                )
 
+                await message.reply(
+                    "❌ رفع مسدودیت ناموفق بود."
+                )
+
+        # KICK
         elif command == "اخراج":
             try:
                 await message.bot.ban_chat_member(
@@ -464,5 +896,10 @@ async def management_commands(message: Message):
                 )
 
             except Exception:
-                logger.exception("Kick failed")
-                await message.reply("❌ اخراج کاربر ناموفق بود.")
+                logger.exception(
+                    "Kick failed"
+                )
+
+                await message.reply(
+                    "❌ اخراج کاربر ناموفق بود."
+                )
