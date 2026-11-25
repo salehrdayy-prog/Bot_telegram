@@ -187,7 +187,14 @@ async def list_admins(message: Message):
         )
 
 
-@router.message(F.text)
+# فقط پیام‌هایی که با یکی از دستورات مدیریت شروع می‌شوند
+# وارد هندلر مدیریت می‌شوند؛ پیام‌های دیگر به روترهای بعدی می‌رسند.
+@router.message(
+    F.text,
+    F.text.regexp(
+        r"^(?:/)?(?:پینگ|شناسه|اطلاعات|مدیران|اخطار|حذف_اخطار|تعداد_اخطار|سکوت|لغو_سکوت|مسدود|رفع_مسدودی|اخراج)(?:\s|$)"
+    )
+)
 async def management_commands(message: Message):
     command, args = get_command(message)
 
@@ -335,7 +342,6 @@ async def management_commands(message: Message):
                 )
 
         elif command == "حذف_اخطار":
-
             await reset_warnings(
                 message.chat.id,
                 target_id
@@ -346,7 +352,6 @@ async def management_commands(message: Message):
             )
 
         elif command == "سکوت":
-
             duration = (
                 parse_duration(remaining[0])
                 if remaining else None
@@ -385,7 +390,6 @@ async def management_commands(message: Message):
                 await message.reply("❌ اجرای سکوت ناموفق بود.")
 
         elif command == "لغو_سکوت":
-
             try:
                 await message.bot.restrict_chat_member(
                     chat_id=message.chat.id,
@@ -413,7 +417,6 @@ async def management_commands(message: Message):
                 await message.reply("❌ لغو سکوت ناموفق بود.")
 
         elif command == "مسدود":
-
             try:
                 await message.bot.ban_chat_member(
                     chat_id=message.chat.id,
@@ -429,7 +432,6 @@ async def management_commands(message: Message):
                 await message.reply("❌ مسدودسازی ناموفق بود.")
 
         elif command == "رفع_مسدودی":
-
             try:
                 await message.bot.unban_chat_member(
                     chat_id=message.chat.id,
@@ -446,7 +448,6 @@ async def management_commands(message: Message):
                 await message.reply("❌ رفع مسدودیت ناموفق بود.")
 
         elif command == "اخراج":
-
             try:
                 await message.bot.ban_chat_member(
                     chat_id=message.chat.id,
