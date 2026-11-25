@@ -1,5 +1,6 @@
 import time
 import unicodedata
+
 from collections import defaultdict, deque
 
 from aiogram import Router
@@ -7,10 +8,14 @@ from aiogram.types import Message
 from aiogram.enums import ChatType
 
 from config import FLOOD_LIMIT, FLOOD_TIME
+
 from database import get_lock
+
 from utils import contains_link, normalize_text
 
+
 router = Router()
+
 
 # ==================================================
 # MEMORY
@@ -25,6 +30,7 @@ _group_bad_words = defaultdict(set)
 # ==================================================
 
 def register_bad_words(group_id: int, words: list[str]):
+
     _group_bad_words[group_id] = {
         normalize_text(word)
         for word in words
@@ -33,6 +39,7 @@ def register_bad_words(group_id: int, words: list[str]):
 
 
 def contains_bad_word(group_id: int, text: str) -> bool:
+
     normalized = normalize_text(text)
 
     return any(
@@ -46,8 +53,11 @@ def contains_bad_word(group_id: int, text: str) -> bool:
 # ==================================================
 
 def is_flood(group_id: int, user_id: int) -> bool:
+
     now = time.monotonic()
+
     key = (group_id, user_id)
+
     messages = _user_messages[key]
 
     while messages and now - messages[0] > FLOOD_TIME:
@@ -63,9 +73,11 @@ def is_flood(group_id: int, user_id: int) -> bool:
 # ==================================================
 
 async def safe_delete(message: Message):
+
     try:
         await message.delete()
         return True
+
     except Exception:
         return False
 
@@ -75,6 +87,7 @@ async def safe_delete(message: Message):
 # ==================================================
 
 def has_entity(message: Message, entity_type: str) -> bool:
+
     entities = (
         (message.entities or [])
         + (message.caption_entities or [])
@@ -91,7 +104,9 @@ def has_entity(message: Message, entity_type: str) -> bool:
 # ==================================================
 
 def contains_emoji(text: str) -> bool:
+
     for char in text:
+
         code = ord(char)
 
         if (
@@ -117,6 +132,7 @@ def is_forwarded(message: Message) -> bool:
 # ==================================================
 
 def is_service_message(message: Message) -> bool:
+
     service_fields = (
         "new_chat_members",
         "left_chat_member",
@@ -155,7 +171,37 @@ def is_service_message(message: Message) -> bool:
 # ==================================================
 
 async def check_lock(group_id: int, lock_type: str) -> bool:
-    return await get_lock(group_id, lock_type)
+
+    try:
+        return await get_lock(group_id, lock_type)
+
+    except Exception:
+        return False
+
+
+# ==================================================
+# ADMIN CHECK
+# ==================================================
+
+async def is_group_admin(message: Message) -> bool:
+
+    if not message.from_user:
+        return False
+
+    try:
+
+        member = await message.bot.get_chat_member(
+            message.chat.id,
+            message.from_user.id
+        )
+
+        return member.status in (
+            "administrator",
+            "creator"
+        )
+
+    except Exception:
+        return False
 
 
 # ==================================================
@@ -187,8 +233,6 @@ async def filter_messages(message: Message):
             message.new_chat_members
             and await check_lock(group_id, "new_members")
         ):
-            # فقط پیام ورود حذف می‌شود؛
-            # این کار مانع عضویت واقعی کاربر نمی‌شود.
             await safe_delete(message)
             return
 
@@ -239,17 +283,8 @@ async def filter_messages(message: Message):
     # ADMIN CHECK
     # ==================================================
 
-    try:
-        member = await message.bot.get_chat_member(
-            group_id,
-            user_id
-        )
-
-        if member.status in ("administrator", "creator"):
-            return
-
-    except Exception:
-        pass
+    if await is_group_admin(message):
+        return
 
     # ==================================================
     # MESSAGE CONTENT
@@ -294,7 +329,6 @@ async def filter_messages(message: Message):
 
     if (
         message.text
-        and not message.photo
         and await check_lock(group_id, "text")
     ):
         await safe_delete(message)
